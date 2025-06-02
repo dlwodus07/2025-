@@ -39,5 +39,3 @@ if query:
             st.markdown("---")
     else:
         st.warning("책을 찾을 수 없습니다. 다른 키워드를 시도해보세요!")
-
-

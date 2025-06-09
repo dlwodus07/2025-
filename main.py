@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-
-# 한글 폰트 설정 (맑은 고딕 등 시스템에 따라 조정 필요)
-plt.rcParams['font.family'] = 'Malgun Gothic'
+import altair as alt
 
 @st.cache_data
 def load_data():
@@ -25,20 +22,20 @@ female_cols = [f"2025년05월_여_{age}세" for age in ages]
 male_values = region_data[male_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
 female_values = region_data[female_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
 
-# 시각화
-fig, ax = plt.subplots(figsize=(8, 10))
+pyramid_df = pd.DataFrame({
+    "연령": ages * 2,
+    "성별": ["남"] * len(ages) + ["여"] * len(ages),
+    "인구수": list(male_values) + list(female_values * -1)
+})
 
-ax.barh(ages, male_values, color='steelblue', label='남성')
-ax.barh(ages, -female_values, color='pink', label='여성')
+chart = alt.Chart(pyramid_df).mark_bar().encode(
+    x=alt.X('인구수:Q', title='인구수', axis=alt.Axis(format='.0f')),
+    y=alt.Y('연령:O', title='연령', sort='descending'),
+    color=alt.Color('성별:N', scale=alt.Scale(domain=["남", "여"], range=["steelblue", "pink"]))
+).properties(
+    width=600,
+    height=800,
+    title=f"{selected_region} 인구 피라미드 ({age_range[0]}~{age_range[1]}세)"
+)
 
-ax.set_yticks(ages)
-ax.set_yticklabels([f"{age}세" for age in ages])
-ax.set_xlabel("인구수")
-ax.set_title(f"{selected_region} 인구 피라미드 ({age_range[0]}~{age_range[1]}세)")
-
-# x축 숫자 양쪽으로 출력
-xticks = ax.get_xticks()
-ax.set_xticklabels([abs(int(x)) for x in xticks])
-ax.legend()
-
-st.pyplot(fig)
+st.altair_chart(chart)

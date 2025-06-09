@@ -1,14 +1,6 @@
-import os
 import streamlit as st
 import pandas as pd
-
-# ✅ plotly가 설치되지 않은 경우 자동 설치
-try:
-    import plotly.express as px
-except ModuleNotFoundError:
-    with st.spinner("plotly 설치 중..."):
-        os.system("pip install plotly")
-    import plotly.express as px  # 재시도
+import plotly.express as px
 
 # ✅ 데이터 로드 함수
 @st.cache_data

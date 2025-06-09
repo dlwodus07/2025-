@@ -1,26 +1,57 @@
 import streamlit as st
-import folium
-from streamlit_folium import st_folium
+import pandas as pd
+import plotly.express as px
 
-st.title("🗺️ 나만의 위치 북마크 지도")
+# 데이터 로드 (로컬 실행 시 경로 조정 필요)
+@st.cache_data
+def load_data():
+    df_gender = pd.read_csv("people_gender.csv", encoding="cp949")
+    return df_gender
 
-st.write("아래에 장소 정보를 입력하고 지도에 표시해보세요!")
+df = load_data()
 
-# 장소 입력
-place = st.text_input("장소 이름", value="서울 시청")
-lat = st.number_input("위도 (Latitude)", value=37.5665, format="%.6f")
-lon = st.number_input("경도 (Longitude)", value=126.9780, format="%.6f")
+# ✅ 지역 선택
+regions = df['행정구역'].unique()
+selected_region = st.selectbox("지역을 선택하세요:", regions)
 
-# 세션 상태 저장
-if "places" not in st.session_state:
-    st.session_state.places = []
+# ✅ 선택한 지역 데이터 필터링
+region_data = df[df['행정구역'] == selected_region]
 
-if st.button("지도에 추가하기"):
-    st.session_state.places.append((place, lat, lon))
+# ✅ 연령 필터링 슬라이더
+age_range = st.slider("연령대를 선택하세요:", 0, 100, (0, 100))
 
-# 지도 그리기
-m = folium.Map(location=[37.5665, 126.9780], zoom_start=6)
-for name, lat, lon in st.session_state.places:
-    folium.Marker([lat, lon], tooltip=name).add_to(m)
+# ✅ 남/여 인구 데이터 추출
+ages = list(range(age_range[0], age_range[1] + 1))
+male_cols = [f"2025년05월_남_{age}세" for age in ages]
+female_cols = [f"2025년05월_여_{age}세" for age in ages]
 
-st_folium(m, width=700, height=500)
+# 한 행이므로 .iloc[0] 사용
+male_values = region_data[male_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
+female_values = region_data[female_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
+
+# ✅ 인구 피라미드용 데이터프레임 생성
+pyramid_df = pd.DataFrame({
+    "연령": ages * 2,
+    "성별": ["남"] * len(ages) + ["여"] * len(ages),
+    "인구수": list(male_values) + list(female_values * -1)  # 여성은 음수로
+})
+
+# ✅ 시각화
+fig = px.bar(
+    pyramid_df,
+    x="인구수",
+    y="연령",
+    color="성별",
+    orientation="h",
+    title=f"{selected_region} 인구 피라미드 (연령 {age_range[0]}~{age_range[1]}세)",
+    color_discrete_map={"남": "#1f77b4", "여": "#e377c2"},
+)
+
+fig.update_layout(
+    xaxis_title="인구수",
+    yaxis_title="연령",
+    font=dict(family="Malgun Gothic"),  # 한글 폰트 설정
+    bargap=0.1
+)
+
+st.plotly_chart(fig)

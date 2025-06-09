@@ -1,8 +1,16 @@
+import os
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
-# 데이터 로드 (로컬 실행 시 경로 조정 필요)
+# ✅ plotly가 설치되지 않은 경우 자동 설치
+try:
+    import plotly.express as px
+except ModuleNotFoundError:
+    with st.spinner("plotly 설치 중..."):
+        os.system("pip install plotly")
+    import plotly.express as px  # 재시도
+
+# ✅ 데이터 로드 함수
 @st.cache_data
 def load_data():
     df_gender = pd.read_csv("people_gender.csv", encoding="cp949")
@@ -14,18 +22,18 @@ df = load_data()
 regions = df['행정구역'].unique()
 selected_region = st.selectbox("지역을 선택하세요:", regions)
 
-# ✅ 선택한 지역 데이터 필터링
+# ✅ 선택한 지역 필터링
 region_data = df[df['행정구역'] == selected_region]
 
-# ✅ 연령 필터링 슬라이더
+# ✅ 연령 슬라이더
 age_range = st.slider("연령대를 선택하세요:", 0, 100, (0, 100))
 
-# ✅ 남/여 인구 데이터 추출
+# ✅ 연령대 컬럼 이름 생성
 ages = list(range(age_range[0], age_range[1] + 1))
 male_cols = [f"2025년05월_남_{age}세" for age in ages]
 female_cols = [f"2025년05월_여_{age}세" for age in ages]
 
-# 한 행이므로 .iloc[0] 사용
+# ✅ 데이터 처리
 male_values = region_data[male_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
 female_values = region_data[female_cols].iloc[0].astype(str).str.replace(",", "").astype(int)
 
@@ -33,7 +41,7 @@ female_values = region_data[female_cols].iloc[0].astype(str).str.replace(",", ""
 pyramid_df = pd.DataFrame({
     "연령": ages * 2,
     "성별": ["남"] * len(ages) + ["여"] * len(ages),
-    "인구수": list(male_values) + list(female_values * -1)  # 여성은 음수로
+    "인구수": list(male_values) + list(female_values * -1)
 })
 
 # ✅ 시각화
@@ -50,7 +58,7 @@ fig = px.bar(
 fig.update_layout(
     xaxis_title="인구수",
     yaxis_title="연령",
-    font=dict(family="Malgun Gothic"),  # 한글 폰트 설정
+    font=dict(family="Malgun Gothic"),
     bargap=0.1
 )
 

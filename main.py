@@ -1,11 +1,15 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import numpy as np
+import seaborn as sns
 
-# 페이지 설정 - 와이드 레이아웃으로 설정하여 더 많은 공간 활용
+# 한글 폰트 설정 (matplotlib에서 한글 표시를 위해)
+plt.rcParams['font.family'] = 'DejaVu Sans'
+plt.rcParams['axes.unicode_minus'] = False
+
+# 페이지 설정
 st.set_page_config(
     page_title="문해력 현황 분석 및 교육 지원",
     page_icon="📚",
@@ -17,7 +21,7 @@ st.set_page_config(
 st.title("📚 문해력 현황 분석 및 교육 지원 시스템")
 st.markdown("### 사서 및 교사를 위한 데이터 기반 문해력 교육 도구")
 
-# 사이드바 - 네비게이션 및 필터 옵션
+# 사이드바
 st.sidebar.title("🔧 분석 도구")
 st.sidebar.markdown("---")
 
@@ -31,7 +35,7 @@ def load_data():
     # 실제 데이터 (제공된 CSV 파일 내용)
     data = {
         'Year': [2017, 2017, 2017, 2014, 2014, 2014, 2020, 2020, 2020],
-        '성별': ['전체', '남성', '여성', '전체', '남성', '여성', '전체', '남성', '여성'],
+        'Gender': ['전체', '남성', '여성', '전체', '남성', '여성', '전체', '남성', '여성'],
         'Value': [77.6, 81.9, 73.4, 71.5, 77.0, 66.0, 79.8, 83.7, 76.0]
     }
     df = pd.DataFrame(data)
@@ -50,12 +54,12 @@ selected_years = st.sidebar.multiselect(
 
 selected_gender = st.sidebar.multiselect(
     "성별 선택:",
-    options=df['성별'].unique(),
-    default=df['성별'].unique()
+    options=df['Gender'].unique(),
+    default=df['Gender'].unique()
 )
 
 # 필터링된 데이터
-filtered_df = df[(df['Year'].isin(selected_years)) & (df['성별'].isin(selected_gender))]
+filtered_df = df[(df['Year'].isin(selected_years)) & (df['Gender'].isin(selected_gender))]
 
 # 메인 대시보드 레이아웃
 col1, col2 = st.columns([2, 1])
@@ -63,53 +67,62 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("📈 문해력 변화 추이")
     
-    # 전체 성별 트렌드 그래프 생성
-    fig_trend = px.line(
-        filtered_df, 
-        x='Year', 
-        y='Value', 
-        color='성별',
-        title="연도별 문해력 변화",
-        markers=True,
-        height=400
-    )
+    # matplotlib을 사용한 선형 그래프
+    fig, ax = plt.subplots(figsize=(10, 6))
     
-    # 그래프 스타일 커스터마이징
-    fig_trend.update_layout(
-        xaxis_title="연도",
-        yaxis_title="문해력 점수 (%)",
-        legend_title="성별",
-        font=dict(size=12),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
+    # 성별별로 그래프 그리기
+    for gender in filtered_df['Gender'].unique():
+        gender_data = filtered_df[filtered_df['Gender'] == gender]
+        ax.plot(gender_data['Year'], gender_data['Value'], 
+                marker='o', linewidth=2, label=gender, markersize=8)
     
-    # 그래프 표시
-    st.plotly_chart(fig_trend, use_container_width=True)
+    ax.set_xlabel('Year', fontsize=12)
+    ax.set_ylabel('Literacy Rate (%)', fontsize=12)
+    ax.set_title('Literacy Rate Trends by Year', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(60, 90)
+    
+    # Streamlit에 그래프 표시
+    st.pyplot(fig)
     
     # 성별 비교 막대 그래프
     st.subheader("🔍 성별 비교 분석")
     
-    # 막대 그래프 생성
-    fig_bar = px.bar(
-        filtered_df, 
-        x='Year', 
-        y='Value', 
-        color='성별',
-        barmode='group',
-        title="연도별 성별 문해력 비교",
-        height=350
-    )
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
     
-    fig_bar.update_layout(
-        xaxis_title="연도",
-        yaxis_title="문해력 점수 (%)",
-        legend_title="성별",
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
+    # 막대 그래프를 위한 데이터 준비
+    years = filtered_df['Year'].unique()
+    x = np.arange(len(years))
+    width = 0.25
     
-    st.plotly_chart(fig_bar, use_container_width=True)
+    # 각 성별별로 막대 그래프 생성
+    genders = ['전체', '남성', '여성']
+    colors = ['#3498db', '#e74c3c', '#f39c12']
+    
+    for i, gender in enumerate(genders):
+        if gender in filtered_df['Gender'].values:
+            values = []
+            for year in years:
+                year_gender_data = filtered_df[(filtered_df['Year'] == year) & 
+                                             (filtered_df['Gender'] == gender)]
+                if not year_gender_data.empty:
+                    values.append(year_gender_data['Value'].iloc[0])
+                else:
+                    values.append(0)
+            
+            ax2.bar(x + i * width, values, width, label=gender, 
+                   color=colors[i], alpha=0.8)
+    
+    ax2.set_xlabel('Year', fontsize=12)
+    ax2.set_ylabel('Literacy Rate (%)', fontsize=12)
+    ax2.set_title('Literacy Rate Comparison by Gender', fontsize=14, fontweight='bold')
+    ax2.set_xticks(x + width)
+    ax2.set_xticklabels(years)
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    st.pyplot(fig2)
 
 with col2:
     st.subheader("📊 주요 통계")
@@ -120,7 +133,7 @@ with col2:
     # 통계 정보를 메트릭으로 표시
     for _, row in latest_data.iterrows():
         st.metric(
-            label=f"{row['성별']} (2020년)",
+            label=f"{row['Gender']} (2020년)",
             value=f"{row['Value']}%"
         )
     
@@ -133,32 +146,24 @@ with col2:
     gap_data = []
     for year in df['Year'].unique():
         year_data = df[df['Year'] == year]
-        male_score = year_data[year_data['성별'] == '남성']['Value'].iloc[0]
-        female_score = year_data[year_data['성별'] == '여성']['Value'].iloc[0]
+        male_score = year_data[year_data['Gender'] == '남성']['Value'].iloc[0]
+        female_score = year_data[year_data['Gender'] == '여성']['Value'].iloc[0]
         gap = male_score - female_score
         gap_data.append({'Year': year, 'Gap': gap})
     
     gap_df = pd.DataFrame(gap_data)
     
     # 격차 트렌드 그래프
-    fig_gap = px.line(
-        gap_df, 
-        x='Year', 
-        y='Gap',
-        title="성별 문해력 격차 변화",
-        markers=True,
-        height=250
-    )
+    fig3, ax3 = plt.subplots(figsize=(8, 4))
+    ax3.plot(gap_df['Year'], gap_df['Gap'], marker='o', 
+             linewidth=3, color='#e74c3c', markersize=8)
+    ax3.set_xlabel('Year', fontsize=10)
+    ax3.set_ylabel('Gap (Male - Female, %p)', fontsize=10)
+    ax3.set_title('Gender Gap Trend', fontsize=12, fontweight='bold')
+    ax3.grid(True, alpha=0.3)
+    ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
     
-    fig_gap.update_layout(
-        xaxis_title="연도",
-        yaxis_title="격차 (남성-여성, %p)",
-        showlegend=False,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
-    
-    st.plotly_chart(fig_gap, use_container_width=True)
+    st.pyplot(fig3)
 
 # 전체 폭 섹션들
 st.markdown("---")
@@ -259,7 +264,7 @@ with col1:
     # 간단한 선형 회귀를 통한 예측
     if len(df['Year'].unique()) >= 2:
         # 전체 데이터로 예측 (선형 회귀)
-        overall_data = df[df['성별'] == '전체'].copy()
+        overall_data = df[df['Gender'] == '전체'].copy()
         
         if len(overall_data) >= 2:
             # numpy를 사용한 선형 회귀
@@ -285,7 +290,7 @@ with col2:
     target_year = st.selectbox("목표 연도", [2025, 2026, 2027, 2028, 2030])
     target_value = st.slider("목표 문해력 (%)", 80, 95, 85)
     
-    current_value = df[df['성별'] == '전체']['Value'].iloc[-1]
+    current_value = df[df['Gender'] == '전체']['Value'].iloc[-1]
     required_improvement = target_value - current_value
     years_remaining = target_year - 2020
     annual_improvement = required_improvement / years_remaining if years_remaining > 0 else 0

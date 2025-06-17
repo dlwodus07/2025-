@@ -1,245 +1,305 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
 
-# 스택 클래스 정의
-class BookViewStack:
-    """
-    도서 조회 기록을 관리하는 스택 자료구조
-    LIFO(Last In First Out) 방식 - 마지막에 본 도서가 가장 먼저 나옴
-    """
-    def __init__(self, max_size=10):
-        self.stack = []  # 스택을 리스트로 구현
-        self.max_size = max_size  # 최대 저장 개수
-    
-    def push(self, book_info):
-        """
-        스택에 도서 정보 추가 (Push 연산)
-        - 같은 순위의 도서가 이미 있으면 제거 후 맨 위에 추가
-        - 최대 크기를 초과하면 가장 오래된 항목 제거
-        """
-        # 중복 제거: 같은 순위번호의 도서가 있으면 제거
-        self.stack = [book for book in self.stack if book['순위번호'] != book_info['순위번호']]
-        
-        # 새 도서를 스택 맨 위에 추가
-        self.stack.append(book_info)
-        
-        # 최대 크기 초과시 가장 아래(오래된) 항목 제거
-        if len(self.stack) > self.max_size:
-            self.stack.pop(0)  # 첫 번째 요소 제거 (가장 오래된 것)
-    
-    def pop(self):
-        """
-        스택에서 맨 위 도서 제거하고 반환 (Pop 연산)
-        스택이 비어있으면 None 반환
-        """
-        if not self.is_empty():
-            return self.stack.pop()
-        return None
-    
-    def peek(self):
-        """
-        스택 맨 위 도서 확인 (제거하지 않음)
-        """
-        if not self.is_empty():
-            return self.stack[-1]
-        return None
-    
-    def is_empty(self):
-        """스택이 비어있는지 확인"""
-        return len(self.stack) == 0
-    
-    def size(self):
-        """스택 크기 반환"""
-        return len(self.stack)
-    
-    def get_history(self):
-        """조회 기록 반환 (최신순으로 정렬)"""
-        return list(reversed(self.stack))
+# 페이지 설정 - 와이드 레이아웃으로 설정하여 더 많은 공간 활용
+st.set_page_config(
+    page_title="문해력 현황 분석 및 교육 지원",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# 세션 상태 초기화 (스택 객체 생성)
-if 'book_stack' not in st.session_state:
-    st.session_state.book_stack = BookViewStack()
+# 메인 제목 및 설명
+st.title("📚 문해력 현황 분석 및 교육 지원 시스템")
+st.markdown("### 사서 및 교사를 위한 데이터 기반 문해력 교육 도구")
 
-# CSV 파일 읽기 (CP949 인코딩)
+# 사이드바 - 네비게이션 및 필터 옵션
+st.sidebar.title("🔧 분석 도구")
+st.sidebar.markdown("---")
+
+# CSV 데이터 로드 함수
 @st.cache_data
-def load_book_data():
-    """데이터 로딩 함수 - 캐싱으로 성능 최적화"""
-    df = pd.read_csv("people_book.csv", encoding="cp949")
-    # 500위까지만 필터링
-    df_filtered = df[df["순위번호"] <= 500]
-    return df_filtered
+def load_data():
+    """
+    CSV 데이터를 로드하고 전처리하는 함수
+    캐시를 사용하여 성능 최적화
+    """
+    # 실제 데이터 (제공된 CSV 파일 내용)
+    data = {
+        'Year': [2017, 2017, 2017, 2014, 2014, 2014, 2020, 2020, 2020],
+        '성별': ['전체', '남성', '여성', '전체', '남성', '여성', '전체', '남성', '여성'],
+        'Value': [77.6, 81.9, 73.4, 71.5, 77.0, 66.0, 79.8, 83.7, 76.0]
+    }
+    df = pd.DataFrame(data)
+    return df
 
 # 데이터 로드
-df = load_book_data()
+df = load_data()
 
-# 메인 제목
-st.title("📚 인기 도서 순위 조회 (1~500위)")
-st.markdown("### 스택(Stack) 자료구조로 조회 기록 관리")
+# 사이드바 필터 옵션
+st.sidebar.subheader("📊 데이터 필터")
+selected_years = st.sidebar.multiselect(
+    "연도 선택:",
+    options=df['Year'].unique(),
+    default=df['Year'].unique()
+)
 
-# 레이아웃: 메인 영역과 사이드바로 구분
-col_main, col_history = st.columns([2.5, 1.5])
+selected_gender = st.sidebar.multiselect(
+    "성별 선택:",
+    options=df['성별'].unique(),
+    default=df['성별'].unique()
+)
 
-with col_main:
-    # 순위 선택 (중복 제거 및 정렬, 500위까지만)
-    unique_ranks = sorted(df["순위번호"].unique())
-    selected_rank = st.selectbox("순위를 선택하세요 📊 (1~500위)", unique_ranks)
-    
-    # 선택된 순위의 도서 정보 필터링
-    book_info = df[df["순위번호"] == selected_rank].iloc[0]
-    
-    # 스택에 현재 조회한 도서 정보 추가 (자동으로 Push)
-    book_dict = {
-        '순위번호': book_info['순위번호'],
-        '도서명정보': book_info['도서명정보'],
-        '저자명정보': book_info['저자명정보'],
-        '출판사명': book_info['출판사명'],
-        '출판년도': book_info['출판년도'],
-        '도서이미지URL': book_info['도서이미지URL']
-    }
-    st.session_state.book_stack.push(book_dict)
-    
-    # 도서 정보 표시
-    st.subheader(f"📖 {book_info['도서명정보']}")
-    
-    # 상세 정보를 두 컬럼으로 나누어 표시
-    info_col1, info_col2 = st.columns(2)
-    
-    with info_col1:
-        st.markdown(f"**👤 저자:** {book_info['저자명정보']}")
-        st.markdown(f"**🏢 출판사:** {book_info['출판사명']}")
-    
-    with info_col2:
-        year = int(book_info['출판년도']) if not pd.isna(book_info['출판년도']) else '정보 없음'
-        st.markdown(f"**📅 출판년도:** {year}")
-        st.markdown(f"**🏆 현재 순위:** {book_info['순위번호']}위")
-    
-    # 도서 이미지 출력
-    st.image(book_info["도서이미지URL"], use_column_width=True)
+# 필터링된 데이터
+filtered_df = df[(df['Year'].isin(selected_years)) & (df['성별'].isin(selected_gender))]
 
-with col_history:
-    # 조회 기록 표시 (스택 활용)
-    st.subheader("🕒 최근 조회 기록")
-    st.caption(f"스택 크기: {st.session_state.book_stack.size()}개")
+# 메인 대시보드 레이아웃
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("📈 문해력 변화 추이")
     
-    # 스택에서 조회 기록 가져오기
-    history = st.session_state.book_stack.get_history()
+    # 전체 성별 트렌드 그래프 생성
+    fig_trend = px.line(
+        filtered_df, 
+        x='Year', 
+        y='Value', 
+        color='성별',
+        title="연도별 문해력 변화",
+        markers=True,
+        height=400
+    )
     
-    if history:
-        # 최근 조회한 도서들을 카드 형태로 표시
-        for i, book in enumerate(history[:8]):  # 최근 8개만 표시
-            with st.expander(
-                f"{i+1}. {book['도서명정보'][:15]}{'...' if len(book['도서명정보']) > 15 else ''}", 
-                expanded=(i == 0)  # 첫 번째만 펼쳐서 표시
-            ):
-                st.write(f"**순위:** {book['순위번호']}위")
-                st.write(f"**저자:** {book['저자명정보']}")
-                year = int(book['출판년도']) if not pd.isna(book['출판년도']) else '정보 없음'
-                st.write(f"**출판년도:** {year}")
-                
-                # 이 도서로 바로가기 버튼
-                if st.button(f"📖 다시 보기", key=f"view_{book['순위번호']}_{i}"):
-                    # 세션에서 선택된 순위 변경하고 페이지 새로고침
-                    st.query_params.from_dict({"rank": str(book['순위번호'])})
-                    st.rerun()
-    else:
-        st.info("아직 조회한 도서가 없습니다.")
+    # 그래프 스타일 커스터마이징
+    fig_trend.update_layout(
+        xaxis_title="연도",
+        yaxis_title="문해력 점수 (%)",
+        legend_title="성별",
+        font=dict(size=12),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
     
-    # 스택 관리 버튼들
+    # 그래프 표시
+    st.plotly_chart(fig_trend, use_container_width=True)
+    
+    # 성별 비교 막대 그래프
+    st.subheader("🔍 성별 비교 분석")
+    
+    # 막대 그래프 생성
+    fig_bar = px.bar(
+        filtered_df, 
+        x='Year', 
+        y='Value', 
+        color='성별',
+        barmode='group',
+        title="연도별 성별 문해력 비교",
+        height=350
+    )
+    
+    fig_bar.update_layout(
+        xaxis_title="연도",
+        yaxis_title="문해력 점수 (%)",
+        legend_title="성별",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+    
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col2:
+    st.subheader("📊 주요 통계")
+    
+    # 최신 데이터 (2020년) 추출
+    latest_data = df[df['Year'] == 2020]
+    
+    # 통계 정보를 메트릭으로 표시
+    for _, row in latest_data.iterrows():
+        st.metric(
+            label=f"{row['성별']} (2020년)",
+            value=f"{row['Value']}%"
+        )
+    
     st.markdown("---")
-    st.subheader("🔧 기록 관리")
     
-    # Pop 버튼 (가장 최근 조회 기록 제거)
-    if st.button("🗑️ 최근 기록 삭제", help="스택에서 Pop 연산 수행"):
-        removed_book = st.session_state.book_stack.pop()
-        if removed_book:
-            st.success(f"'{removed_book['도서명정보']}' 기록이 삭제되었습니다!")
-            st.rerun()
-        else:
-            st.warning("삭제할 기록이 없습니다!")
+    # 성별 격차 분석
+    st.subheader("⚖️ 성별 격차 분석")
     
-    # 전체 기록 삭제
-    if st.button("🧹 전체 기록 삭제", help="스택 전체 초기화"):
-        st.session_state.book_stack = BookViewStack()
-        st.success("모든 조회 기록이 삭제되었습니다!")
-        st.rerun()
+    # 각 연도별 성별 격차 계산
+    gap_data = []
+    for year in df['Year'].unique():
+        year_data = df[df['Year'] == year]
+        male_score = year_data[year_data['성별'] == '남성']['Value'].iloc[0]
+        female_score = year_data[year_data['성별'] == '여성']['Value'].iloc[0]
+        gap = male_score - female_score
+        gap_data.append({'Year': year, 'Gap': gap})
+    
+    gap_df = pd.DataFrame(gap_data)
+    
+    # 격차 트렌드 그래프
+    fig_gap = px.line(
+        gap_df, 
+        x='Year', 
+        y='Gap',
+        title="성별 문해력 격차 변화",
+        markers=True,
+        height=250
+    )
+    
+    fig_gap.update_layout(
+        xaxis_title="연도",
+        yaxis_title="격차 (남성-여성, %p)",
+        showlegend=False,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+    
+    st.plotly_chart(fig_gap, use_container_width=True)
 
-# 하단 정보 섹션
+# 전체 폭 섹션들
 st.markdown("---")
 
-# 데이터 통계 정보 추가
-st.subheader("📊 데이터 정보")
-stats_col1, stats_col2, stats_col3 = st.columns(3)
+# 상세 데이터 테이블
+st.subheader("📋 상세 데이터")
+col1, col2 = st.columns([3, 1])
 
-with stats_col1:
-    st.metric("총 도서 수", len(df))
+with col1:
+    st.dataframe(filtered_df, use_container_width=True)
 
-with stats_col2:
-    st.metric("순위 범위", "1~500위")
+with col2:
+    # 데이터 다운로드 버튼
+    csv = filtered_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 CSV 다운로드",
+        data=csv,
+        file_name='literacy_data.csv',
+        mime='text/csv'
+    )
 
-with stats_col3:
-    st.metric("최신 조회", f"{selected_rank}위")
-
-# 스택 자료구조 설명
-with st.expander("🧠 스택(Stack) 자료구조란?"):
-    st.markdown("""
-    **스택의 특징:**
-    - **LIFO 구조**: Last In First Out (후입선출) - 마지막에 들어간 것이 먼저 나옴
-    - **Push 연산**: 스택 맨 위에 새로운 데이터 추가
-    - **Pop 연산**: 스택 맨 위의 데이터를 제거하고 반환
-    - **Peek 연산**: 스택 맨 위의 데이터를 확인 (제거하지 않음)
-    
-    **이 앱에서의 활용:**
-    - 사용자가 조회한 도서를 순서대로 스택에 저장
-    - 가장 최근에 본 도서가 맨 위에 표시됨
-    - 같은 도서를 다시 보면 기존 기록을 제거하고 맨 위로 이동
-    - 최대 10개까지만 저장하여 메모리 효율성 확보
-    """)
-
-# 디버깅 정보
-with st.expander("🔧 디버깅 과정 및 문제 해결"):
-    st.markdown("""
-    **발생한 문제들과 해결 과정:**
-    
-    **1. 세션 상태 관리 문제**
-    - **문제**: Streamlit에서 selectbox 변경시 스택 데이터가 초기화됨
-    - **해결**: `st.session_state`를 사용하여 스택 객체를 영구 보존
-    - **코드**: `if 'book_stack' not in st.session_state:` 조건으로 초기화 방지
-    
-    **2. 중복 데이터 처리**
-    - **문제**: 같은 도서를 여러 번 선택하면 스택에 중복 저장됨
-    - **해결**: Push 메서드에서 같은 순위번호 도서를 먼저 제거 후 추가
-    - **논리**: 리스트 컴프리헨션으로 `[book for book in self.stack if book['순위번호'] != book_info['순위번호']]`
-    
-    **3. 메모리 관리**
-    - **문제**: 계속 사용하면 스택 크기가 무한정 증가할 수 있음
-    - **해결**: `max_size=10`으로 최대 크기 제한, 초과시 가장 오래된 항목 자동 제거
-    - **효과**: 메모리 사용량 제한으로 안정적인 앱 운영
-    
-    **4. 사용자 경험 개선**
-    - **문제**: 기록에서 도서 선택시 어떻게 해당 도서로 이동할지 고민
-    - **해결**: 버튼 클릭시 `st.rerun()`으로 페이지 새로고침하여 최신 상태 반영
-    
-    **5. 데이터 범위 제한 (NEW)**
-    - **문제**: 전체 순위 데이터가 너무 많아 선택이 어려움
-    - **해결**: `df[df["순위번호"] <= 500]`로 500위까지만 필터링
-    - **효과**: 더 빠른 로딩과 사용자 친화적인 선택 옵션 제공
-    """)
-
-# 현재 스택 상태 정보
-st.subheader("📊 현재 스택 상태")
-stack_col1, stack_col2, stack_col3 = st.columns(3)
-
-with stack_col1:
-    st.metric("저장된 도서 수", st.session_state.book_stack.size())
-
-with stack_col2:
-    st.metric("최대 저장 가능", "10개")
-
-with stack_col3:
-    is_empty = st.session_state.book_stack.is_empty()
-    st.metric("스택 상태", "비어있음" if is_empty else "데이터 있음")
-
-# 맨 아래 정보
+# 교육 권장사항 섹션
 st.markdown("---")
-st.caption("💡 **스택의 LIFO 특성을 활용한 도서 조회 기록 관리 시스템 (1~500위 제한)**")
-st.caption("📚 CP949 인코딩으로 한글 도서 데이터 처리 | 🔄 자동 중복 제거 | 📝 최대 10개 기록 저장")
+st.subheader("🎯 교육 권장사항 및 활용 방안")
+
+# 탭으로 구분된 권장사항
+tab1, tab2, tab3, tab4 = st.tabs(["📚 일반 권장사항", "👨‍🏫 교사용 가이드", "📖 사서용 가이드", "📈 개선 전략"])
+
+with tab1:
+    st.markdown("""
+    ### 🔍 데이터 분석 결과 기반 권장사항
+    
+    **주요 발견사항:**
+    - 전반적으로 문해력이 향상되고 있음 (2014년 71.5% → 2020년 79.8%)
+    - 성별 격차가 지속적으로 존재함 (남성이 여성보다 높음)
+    - 2020년 기준 남녀 격차는 7.7%p
+    
+    **개선 필요 영역:**
+    1. 여성 학습자 대상 맞춤형 프로그램 개발
+    2. 성별 격차 해소를 위한 교육 방법 연구
+    3. 지속적인 문해력 향상을 위한 종합적 접근
+    """)
+
+with tab2:
+    st.markdown("""
+    ### 👨‍🏫 교사를 위한 활용 가이드
+    
+    **수업 계획 수립:**
+    - 성별별 학습 특성을 고려한 차별화된 교육 방법 적용
+    - 문해력 부족 학생 조기 발견 및 집중 지원
+    - 동료 교육(Peer Teaching) 활용으로 학습 효과 극대화
+    
+    **평가 및 피드백:**
+    - 정기적인 문해력 진단 평가 실시
+    - 개별 학습자 진도 추적 및 맞춤형 피드백 제공
+    - 다양한 텍스트 유형을 활용한 종합적 평가
+    """)
+
+with tab3:
+    st.markdown("""
+    ### 📖 사서를 위한 활용 가이드
+    
+    **장서 개발:**
+    - 성별, 연령별 선호도를 고려한 도서 선정
+    - 문해력 수준별 맞춤형 도서 분류 및 추천
+    - 다양한 장르와 형태의 자료 확충
+    
+    **독서 프로그램 운영:**
+    - 성별 맞춤형 독서 동아리 운영
+    - 문해력 향상을 위한 체계적 독서 교육 프로그램 개발
+    - 지역사회와 연계한 문해력 증진 활동 기획
+    """)
+
+with tab4:
+    st.markdown("""
+    ### 📈 문해력 개선 전략
+    
+    **단기 전략 (1년 이내):**
+    - 성별 격차 해소를 위한 특별 프로그램 운영
+    - 교사 및 사서 대상 문해력 교육 연수 강화
+    - 가정과 연계한 독서 환경 조성
+    
+    **중장기 전략 (2-5년):**
+    - 체계적인 문해력 교육 커리큘럼 개발
+    - 디지털 문해력 교육 통합
+    - 지역사회 전체의 문해력 향상을 위한 네트워크 구축
+    """)
+
+# 추가 분석 도구
+st.markdown("---")
+st.subheader("🔧 추가 분석 도구")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### 📊 예측 모델")
+    
+    # 간단한 선형 회귀를 통한 예측
+    if len(df['Year'].unique()) >= 2:
+        # 전체 데이터로 예측 (선형 회귀)
+        overall_data = df[df['성별'] == '전체'].copy()
+        
+        if len(overall_data) >= 2:
+            # numpy를 사용한 선형 회귀
+            x = overall_data['Year'].values
+            y = overall_data['Value'].values
+            
+            # 최소제곱법으로 기울기와 절편 계산
+            slope = np.sum((x - np.mean(x)) * (y - np.mean(y))) / np.sum((x - np.mean(x))**2)
+            intercept = np.mean(y) - slope * np.mean(x)
+            
+            # 2025년 예측값
+            prediction_2025 = slope * 2025 + intercept
+            
+            st.metric(
+                label="2025년 예상 문해력 (전체)",
+                value=f"{prediction_2025:.1f}%",
+                delta=f"{prediction_2025 - overall_data['Value'].iloc[-1]:.1f}%p"
+            )
+
+with col2:
+    st.markdown("### 🎯 목표 설정")
+    
+    target_year = st.selectbox("목표 연도", [2025, 2026, 2027, 2028, 2030])
+    target_value = st.slider("목표 문해력 (%)", 80, 95, 85)
+    
+    current_value = df[df['성별'] == '전체']['Value'].iloc[-1]
+    required_improvement = target_value - current_value
+    years_remaining = target_year - 2020
+    annual_improvement = required_improvement / years_remaining if years_remaining > 0 else 0
+    
+    st.metric(
+        label=f"{target_year}년 목표 달성을 위한 연간 개선율",
+        value=f"{annual_improvement:.2f}%p/년"
+    )
+
+# 푸터
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666;'>
+    <p>📚 문해력 현황 분석 및 교육 지원 시스템 | 사서 및 교사를 위한 데이터 기반 교육 도구</p>
+    <p>데이터 기반으로 더 나은 교육 환경을 만들어갑니다.</p>
+</div>
+""", unsafe_allow_html=True)
